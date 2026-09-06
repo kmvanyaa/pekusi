@@ -18,6 +18,7 @@ async def run() -> None:
         level=settings.log_level.upper(),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
     bot = Bot(
         settings.bot_token.get_secret_value(),
@@ -32,6 +33,8 @@ async def run() -> None:
     try:
         me = await bot.get_me()
         log.info("Started as @%s, backend=%s", me.username, settings.backend_url)
+        # Не отвечать пачкой на сообщения, накопившиеся пока бот был выключен.
+        await bot.delete_webhook(drop_pending_updates=True)
         await dispatcher.start_polling(bot)
     finally:
         await api.aclose()
