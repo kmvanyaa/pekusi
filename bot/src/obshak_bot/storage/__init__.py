@@ -1,5 +1,6 @@
 from obshak_bot.storage.db import Database
 from obshak_bot.storage.repositories import (
+    ChatBinding,
     ChatGroupRepository,
     ProcessedUpdateRepository,
     UserSession,
@@ -7,6 +8,7 @@ from obshak_bot.storage.repositories import (
 )
 
 __all__ = [
+    "ChatBinding",
     "ChatGroupRepository",
     "Database",
     "ProcessedUpdateRepository",

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 
@@ -18,3 +18,22 @@ class UserDto(ApiModel):
 class AuthResult(ApiModel):
     user: UserDto
     access_token: str
+
+
+class GroupDto(ApiModel):
+    id: str
+    name: str
+    currency: str = "RUB"
+    invite_code: str
+    owner_id: str
+
+
+class MemberUserDto(ApiModel):
+    id: str
+    name: str
+
+
+class GroupMemberDto(ApiModel):
+    user_id: str
+    role: str
+    user: MemberUserDto = Field(alias="User")

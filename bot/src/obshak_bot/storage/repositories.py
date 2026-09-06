@@ -51,30 +51,54 @@ class UserSessionRepository:
         await self._db.conn.commit()
 
 
+@dataclass(frozen=True, slots=True)
+class ChatBinding:
+    chat_id: int
+    group_id: str
+    invite_code: str
+
+
 class ChatGroupRepository:
-    """Привязка Telegram-чата к группе «Общака»."""
+    """Привязка Telegram-чата к группе «Общака» и кэш участников чата, вступивших в неё."""
 
     def __init__(self, db: Database) -> None:
         self._db = db
 
-    async def get_group_id(self, chat_id: int) -> str | None:
+    async def get(self, chat_id: int) -> ChatBinding | None:
         cursor = await self._db.conn.execute(
-            "SELECT group_id FROM chat_groups WHERE chat_id = ?", (chat_id,)
+            "SELECT chat_id, group_id, invite_code FROM chat_groups WHERE chat_id = ?",
+            (chat_id,),
         )
         row = await cursor.fetchone()
-        return row["group_id"] if row else None
+        return ChatBinding(**row) if row else None
 
-    async def bind(self, chat_id: int, group_id: str) -> None:
+    async def bind(self, chat_id: int, group_id: str, invite_code: str) -> None:
         await self._db.conn.execute(
-            "INSERT INTO chat_groups (chat_id, group_id) VALUES (?, ?) "
+            "INSERT INTO chat_groups (chat_id, group_id, invite_code) VALUES (?, ?, ?) "
             "ON CONFLICT(chat_id) DO UPDATE SET group_id = excluded.group_id, "
-            "bound_at = datetime('now')",
-            (chat_id, group_id),
+            "invite_code = excluded.invite_code, bound_at = datetime('now')",
+            (chat_id, group_id, invite_code),
         )
+        await self._db.conn.execute("DELETE FROM chat_members WHERE chat_id = ?", (chat_id,))
         await self._db.conn.commit()
 
     async def unbind(self, chat_id: int) -> None:
         await self._db.conn.execute("DELETE FROM chat_groups WHERE chat_id = ?", (chat_id,))
+        await self._db.conn.execute("DELETE FROM chat_members WHERE chat_id = ?", (chat_id,))
+        await self._db.conn.commit()
+
+    async def is_member(self, chat_id: int, telegram_id: int) -> bool:
+        cursor = await self._db.conn.execute(
+            "SELECT 1 FROM chat_members WHERE chat_id = ? AND telegram_id = ?",
+            (chat_id, telegram_id),
+        )
+        return await cursor.fetchone() is not None
+
+    async def add_member(self, chat_id: int, telegram_id: int) -> None:
+        await self._db.conn.execute(
+            "INSERT OR IGNORE INTO chat_members (chat_id, telegram_id) VALUES (?, ?)",
+            (chat_id, telegram_id),
+        )
         await self._db.conn.commit()
 
 

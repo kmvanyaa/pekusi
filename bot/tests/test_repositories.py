@@ -40,16 +40,28 @@ async def test_session_delete(db: Database) -> None:
 
 async def test_chat_group_bind_rebind_unbind(db: Database) -> None:
     repo = ChatGroupRepository(db)
-    assert await repo.get_group_id(-100) is None
+    assert await repo.get(-100) is None
 
-    await repo.bind(-100, "g1")
-    assert await repo.get_group_id(-100) == "g1"
+    await repo.bind(-100, "g1", "CODE1")
+    binding = await repo.get(-100)
+    assert (binding.group_id, binding.invite_code) == ("g1", "CODE1")
 
-    await repo.bind(-100, "g2")
-    assert await repo.get_group_id(-100) == "g2"
+    await repo.bind(-100, "g2", "CODE2")
+    assert (await repo.get(-100)).group_id == "g2"
 
     await repo.unbind(-100)
-    assert await repo.get_group_id(-100) is None
+    assert await repo.get(-100) is None
+
+
+async def test_chat_members_cache_reset_on_rebind(db: Database) -> None:
+    repo = ChatGroupRepository(db)
+    await repo.bind(-100, "g1", "CODE1")
+    await repo.add_member(-100, 1)
+    assert await repo.is_member(-100, 1) is True
+    assert await repo.is_member(-100, 2) is False
+
+    await repo.bind(-100, "g2", "CODE2")
+    assert await repo.is_member(-100, 1) is False
 
 
 async def test_processed_updates_mark_once(db: Database) -> None:

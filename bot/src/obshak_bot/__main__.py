@@ -8,8 +8,8 @@ from aiogram.enums import ParseMode
 from obshak_bot.api import ObshakApiClient
 from obshak_bot.config import Settings
 from obshak_bot.handlers import build_root_router
-from obshak_bot.middlewares import DedupUpdateMiddleware
-from obshak_bot.services import AuthService
+from obshak_bot.middlewares import AutoJoinMiddleware, DedupUpdateMiddleware
+from obshak_bot.services import AuthService, GroupService
 from obshak_bot.storage import (
     ChatGroupRepository,
     Database,
@@ -42,12 +42,14 @@ async def run() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
 
+    auth = AuthService(api, sessions)
+    groups = GroupService(api, auth, sessions, chats)
+
     dispatcher = Dispatcher()
     dispatcher.update.outer_middleware(DedupUpdateMiddleware(processed_updates))
-    dispatcher["api"] = api
-    dispatcher["auth"] = AuthService(api, sessions)
-    dispatcher["sessions"] = sessions
-    dispatcher["chats"] = chats
+    dispatcher.message.outer_middleware(AutoJoinMiddleware(groups))
+    dispatcher["auth"] = auth
+    dispatcher["groups"] = groups
     dispatcher.include_router(build_root_router())
 
     try:

@@ -3,7 +3,7 @@ from typing import Any
 
 import httpx
 
-from obshak_bot.api.schemas import AuthResult
+from obshak_bot.api.schemas import AuthResult, GroupDto, GroupMemberDto
 
 log = logging.getLogger(__name__)
 
@@ -22,6 +22,13 @@ class ApiNotFound(ApiError):
 
     def __init__(self, message: str) -> None:
         super().__init__(404, message)
+
+
+class ApiUnauthorized(ApiError):
+    """Токен недействителен или истёк (401)."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(401, message)
 
 
 class ApiUnavailable(Exception):
@@ -46,12 +53,37 @@ class ObshakApiClient:
     async def aclose(self) -> None:
         await self._http.aclose()
 
+    # --- auth ---
+
     async def login_by_telegram(self, telegram_id: int) -> AuthResult:
         """Вход пользователя по Telegram ID. Бросает ApiNotFound, если бэкенд его не знает."""
         data = await self._request(
             "POST", "/api/auth/telegram", json={"telegramId": str(telegram_id)}
         )
         return AuthResult.model_validate(data)
+
+    # --- groups ---
+
+    async def create_group(self, token: str, name: str) -> GroupDto:
+        data = await self._request("POST", "/api/groups", token=token, json={"name": name})
+        return GroupDto.model_validate(data)
+
+    async def my_groups(self, token: str) -> list[GroupDto]:
+        data = await self._request("GET", "/api/groups/my", token=token)
+        return [GroupDto.model_validate(item) for item in data]
+
+    async def join_group(self, token: str, invite_code: str) -> str:
+        """Вступить в группу по коду. Возвращает id группы."""
+        data = await self._request(
+            "POST", "/api/groups/join", token=token, json={"inviteCode": invite_code}
+        )
+        return data["groupId"]
+
+    async def group_members(self, token: str, group_id: str) -> list[GroupMemberDto]:
+        data = await self._request("GET", f"/api/groups/{group_id}/members", token=token)
+        return [GroupMemberDto.model_validate(item) for item in data]
+
+    # --- internals ---
 
     async def _request(
         self,
@@ -75,6 +107,8 @@ class ObshakApiClient:
         log.info("Backend error: %s %s -> %s %s", method, path, response.status_code, message)
         if response.status_code == 404:
             raise ApiNotFound(message)
+        if response.status_code == 401:
+            raise ApiUnauthorized(message)
         raise ApiError(response.status_code, message)
 
 
