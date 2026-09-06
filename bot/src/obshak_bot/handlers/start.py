@@ -2,18 +2,19 @@ from aiogram import Router
 from aiogram.filters import CommandStart
 from aiogram.types import Message
 
-from obshak_bot.api import ApiError, ApiNotFound, ApiUnavailable, ObshakApiClient
+from obshak_bot.api import ApiError, ApiNotFound, ApiUnavailable
+from obshak_bot.services import AuthService
 
 router = Router(name="start")
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, api: ObshakApiClient) -> None:
+async def cmd_start(message: Message, auth: AuthService) -> None:
     if message.from_user is None:
         return
 
     try:
-        auth = await api.login_by_telegram(message.from_user.id)
+        user, session = await auth.login(message.from_user.id)
     except ApiNotFound:
         await message.answer(
             "Я тебя ещё не знаю.\n"
@@ -28,4 +29,7 @@ async def cmd_start(message: Message, api: ObshakApiClient) -> None:
         await message.answer(f"Не получилось войти: {exc.message}")
         return
 
-    await message.answer(f"Привет, {auth.user.name}! Ты в «Общаке». Скоро здесь появится меню.")
+    group_hint = (
+        "Текущая группа выбрана." if session.current_group_id else "Группа пока не выбрана."
+    )
+    await message.answer(f"Привет, {user.name}! Ты в «Общаке». {group_hint}")

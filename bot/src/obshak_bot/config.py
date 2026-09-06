@@ -10,4 +10,5 @@ class Settings(BaseSettings):
     bot_token: SecretStr
     backend_url: HttpUrl
     backend_timeout_seconds: float = 10.0
+    db_path: str = "bot_state.sqlite3"
     log_level: str = "INFO"
