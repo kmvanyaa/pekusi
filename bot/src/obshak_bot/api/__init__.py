@@ -5,7 +5,25 @@ from obshak_bot.api.client import (
     ApiUnavailable,
     ObshakApiClient,
 )
-from obshak_bot.api.schemas import AuthResult, GroupDto, GroupMemberDto, UserDto
+from obshak_bot.api.schemas import (
+    AuthResult,
+    BudgetPredictionDto,
+    CategoryDto,
+    ContributionDto,
+    DebtDto,
+    ExpenseCreate,
+    ExpenseDto,
+    ExpenseSplitDto,
+    ExpenseUpdate,
+    GroupDto,
+    GroupMemberDto,
+    MemberUserDto,
+    MonthlySummaryDto,
+    RecognizedReceiptDto,
+    SavingsGoalDto,
+    SplitInput,
+    UserDto,
+)
 
 __all__ = [
     "ApiError",
@@ -13,8 +31,21 @@ __all__ = [
     "ApiUnauthorized",
     "ApiUnavailable",
     "AuthResult",
+    "BudgetPredictionDto",
+    "CategoryDto",
+    "ContributionDto",
+    "DebtDto",
+    "ExpenseCreate",
+    "ExpenseDto",
+    "ExpenseSplitDto",
+    "ExpenseUpdate",
     "GroupDto",
     "GroupMemberDto",
+    "MemberUserDto",
+    "MonthlySummaryDto",
     "ObshakApiClient",
+    "RecognizedReceiptDto",
+    "SavingsGoalDto",
+    "SplitInput",
     "UserDto",
 ]

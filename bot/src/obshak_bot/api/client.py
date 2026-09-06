@@ -1,9 +1,25 @@
 import logging
+from datetime import date
+from decimal import Decimal
 from typing import Any
 
 import httpx
+from pydantic import BaseModel
 
-from obshak_bot.api.schemas import AuthResult, GroupDto, GroupMemberDto
+from obshak_bot.api.schemas import (
+    AuthResult,
+    BudgetPredictionDto,
+    CategoryDto,
+    DebtDto,
+    ExpenseCreate,
+    ExpenseDto,
+    ExpenseUpdate,
+    GroupDto,
+    GroupMemberDto,
+    MonthlySummaryDto,
+    RecognizedReceiptDto,
+    SavingsGoalDto,
+)
 
 log = logging.getLogger(__name__)
 
@@ -36,7 +52,7 @@ class ApiUnavailable(Exception):
 
 
 class ObshakApiClient:
-    """HTTP-клиент к веб-бэкенду «Общака»."""
+    """HTTP-клиент к веб-бэкенду «Общака». Единственная точка доступа бота к данным."""
 
     def __init__(
         self,
@@ -83,6 +99,139 @@ class ObshakApiClient:
         data = await self._request("GET", f"/api/groups/{group_id}/members", token=token)
         return [GroupMemberDto.model_validate(item) for item in data]
 
+    # --- categories ---
+
+    async def categories(self, token: str, group_id: str | None = None) -> list[CategoryDto]:
+        """Общие категории + категории группы (если указана)."""
+        params = {"groupId": group_id} if group_id else None
+        data = await self._request("GET", "/api/categories", token=token, params=params)
+        return [CategoryDto.model_validate(item) for item in data]
+
+    async def create_category(
+        self, token: str, name: str, group_id: str | None = None, icon: str | None = None
+    ) -> CategoryDto:
+        payload = _compact({"name": name, "groupId": group_id, "icon": icon})
+        data = await self._request("POST", "/api/categories", token=token, json=payload)
+        return CategoryDto.model_validate(data)
+
+    # --- expenses ---
+
+    async def create_expense(self, token: str, expense: ExpenseCreate) -> ExpenseDto:
+        data = await self._request(
+            "POST", "/api/expenses", token=token, json=_json_payload(expense)
+        )
+        return ExpenseDto.model_validate(data)
+
+    async def expenses(
+        self,
+        token: str,
+        group_id: str,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        category_id: str | None = None,
+        user_id: str | None = None,
+    ) -> list[ExpenseDto]:
+        params = _compact(
+            {
+                "from": date_from.isoformat() if date_from else None,
+                "to": date_to.isoformat() if date_to else None,
+                "categoryId": category_id,
+                "userId": user_id,
+            }
+        )
+        data = await self._request(
+            "GET", f"/api/expenses/group/{group_id}", token=token, params=params
+        )
+        return [ExpenseDto.model_validate(item) for item in data]
+
+    async def update_expense(
+        self, token: str, expense_id: str, changes: ExpenseUpdate
+    ) -> ExpenseDto:
+        data = await self._request(
+            "PUT", f"/api/expenses/{expense_id}", token=token, json=_json_payload(changes)
+        )
+        return ExpenseDto.model_validate(data)
+
+    async def delete_expense(self, token: str, expense_id: str) -> None:
+        await self._request("DELETE", f"/api/expenses/{expense_id}", token=token)
+
+    async def recognize_receipt(self, token: str, image: bytes) -> RecognizedReceiptDto:
+        """Распознавание чека на бэкенде (у них пока заглушка)."""
+        data = await self._request(
+            "POST",
+            "/api/expenses/receipt",
+            token=token,
+            files={"photo": ("receipt.jpg", image, "image/jpeg")},
+        )
+        return RecognizedReceiptDto.model_validate(data)
+
+    # --- debts ---
+
+    async def my_debts(self, token: str) -> list[DebtDto]:
+        data = await self._request("GET", "/api/debts/my", token=token)
+        return [DebtDto.model_validate(item) for item in data]
+
+    async def group_debts(self, token: str, group_id: str) -> list[DebtDto]:
+        data = await self._request("GET", f"/api/debts/group/{group_id}", token=token)
+        return [DebtDto.model_validate(item) for item in data]
+
+    async def pay_debt(self, token: str, debt_id: str, amount: Decimal) -> None:
+        """Зафиксировать возврат долга. На бэкенде пока не реализовано (501)."""
+        await self._request(
+            "POST", f"/api/debts/{debt_id}/pay", token=token, json={"amount": float(amount)}
+        )
+
+    # --- savings goals ---
+
+    async def savings_goals(self, token: str, group_id: str) -> list[SavingsGoalDto]:
+        data = await self._request("GET", f"/api/savings-goals/group/{group_id}", token=token)
+        return [SavingsGoalDto.model_validate(item) for item in data]
+
+    async def create_savings_goal(
+        self,
+        token: str,
+        group_id: str,
+        name: str,
+        target_amount: Decimal,
+        goal_type: str = "group",
+    ) -> SavingsGoalDto:
+        payload = {
+            "groupId": group_id,
+            "name": name,
+            "type": goal_type,
+            "targetAmount": float(target_amount),
+        }
+        data = await self._request("POST", "/api/savings-goals", token=token, json=payload)
+        return SavingsGoalDto.model_validate(data)
+
+    async def contribute(
+        self, token: str, goal_id: str, amount: Decimal, note: str | None = None
+    ) -> SavingsGoalDto:
+        payload = _compact({"amount": float(amount), "note": note})
+        data = await self._request(
+            "POST", f"/api/savings-goals/{goal_id}/contribute", token=token, json=payload
+        )
+        return SavingsGoalDto.model_validate(data)
+
+    # --- analytics ---
+
+    async def monthly_summary(
+        self, token: str, group_id: str, month: str | None = None
+    ) -> MonthlySummaryDto:
+        """Итоги месяца (`month` в формате YYYY-MM, по умолчанию текущий)."""
+        params = {"month": month} if month else None
+        data = await self._request(
+            "GET", f"/api/analytics/group/{group_id}/summary", token=token, params=params
+        )
+        return MonthlySummaryDto.model_validate(data)
+
+    async def budget_prediction(self, token: str, group_id: str) -> BudgetPredictionDto:
+        data = await self._request(
+            "GET", f"/api/analytics/group/{group_id}/prediction", token=token
+        )
+        return BudgetPredictionDto.model_validate(data)
+
     # --- internals ---
 
     async def _request(
@@ -110,6 +259,27 @@ class ObshakApiClient:
         if response.status_code == 401:
             raise ApiUnauthorized(message)
         raise ApiError(response.status_code, message)
+
+
+def _json_payload(model: BaseModel) -> dict[str, Any]:
+    """Тело запроса для бэкенда: camelCase, без None, Decimal -> число (zod ждёт number)."""
+    return _to_json_numbers(model.model_dump(by_alias=True, exclude_none=True))
+
+
+def _to_json_numbers(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, dict):
+        return {k: _to_json_numbers(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_to_json_numbers(v) for v in value]
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return value
+
+
+def _compact(params: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in params.items() if v is not None}
 
 
 def _error_message(response: httpx.Response) -> str:
